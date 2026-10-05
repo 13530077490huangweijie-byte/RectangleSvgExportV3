@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>长方形圆孔绘图</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: #edf3f8;
+      color: #1a3045;
+      font: 16px/1.5 system-ui, -apple-system,
+        "Microsoft YaHei", sans-serif;
+    }
+
+    .wrap {
+      max-width: 680px;
+      margin: auto;
+      padding: 22px 14px 40px;
+    }
+
+    h1 {
+      margin: 4px 0;
+      font-size: 25px;
+    }
+
+    .hint {
+      margin: 0 0 18px;
+      color: #63788b;
+      font-size: 14px;
+    }
+
+    .card {
+      margin-bottom: 16px;
+      padding: 18px;
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 5px 22px rgba(25, 50, 75, .07);
+    }
+
+    h2 {
+      margin: 0 0 14px;
+      font-size: 18px;
+    }
+
+    .fields {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 13px;
+    }
+
+    label {
+      display: block;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    input, select {
+      display: block;
+      width: 100%;
+      height: 44px;
+      margin-top: 6px;
+      padding: 0 12px;
+      border: 1px solid #cedae4;
+      border-radius: 9px;
+      font: inherit;
+      color: #17324a;
+      background: white;
+    }
+
+    input:focus, select:focus {
+      outline: none;
+      border-color: #2581d6;
+    }
+
+    .note {
+      margin: 14px 0 0;
+      color: #64798b;
+      font-size: 13px;
+    }
+
+    .preview {
+      min-height: 280px;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      background: #fafcfe;
+      border: 1px solid #e3ebf2;
+      border-radius: 10px;
+    }
+
+    svg {
+      display: block;
+      width: 100%;
+      height: auto;
+      max-height: 65vh;
+    }
+
+    .empty {
+      padding: 40px 14px;
+      color: #8494a3;
+      text-align: center;
+    }
+
+    .status {
+      margin: 12px 0 0;
+      color: #596e81;
+      font-size: 13px;
+    }
+
+    .dimensions {
+      margin: 12px 0 0;
+      padding: 12px 14px;
+      background: #f1f7fc;
+      border-radius: 9px;
+      color: #17324a;
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    .error {
+      color: #bd3942;
+    }
+
+    .export {
+      display: block;
+      width: 100%;
+      margin-top: 14px;
+      padding: 12px;
+      border: 0;
+      border-radius: 10px;
+      background: #1878ca;
+      color: white;
+      font: 600 16px system-ui, sans-serif;
+    }
+
+    .export:disabled {
+      background: #aabac8;
+    }
+
+    @media (max-width: 380px) {
+      .fields {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <main class="wrap">
+    <h1>长方形圆孔绘图</h1>
+    <p class="hint">输入尺寸和小圆间距，图形会自动更新。单位：厘米。</p>
+
+    <section class="card">
+      <h2>尺寸与排列</h2>
+
+      <div class="fields">
+        <label>① 长方形宽度（厘米）
+          <input id="width" type="number" inputmode="decimal"
+                 min="0" step="any" placeholder="例如 60">
+        </label>
+
+        <label>② 长方形长度（厘米）
+          <input id="length" type="number" inputmode="decimal"
+                 min="0" step="any" placeholder="例如 100">
+        </label>
+
+        <label>③ 小圆中心间距（厘米）
+          <input id="spacing" type="number" inputmode="decimal"
+                 min="0" step="any" placeholder="例如 5">
+        </label>
+
+        <label>④ 小圆直径（厘米）
+          <input id="diameter" type="number" inputmode="decimal"
+                 min="0" step="any" placeholder="例如 2">
+        </label>
+
+        <label>⑤ 小圆行数
+          <select id="rowParity">
+            <option value="odd">单数行</option>
+            <option value="even">双数行</option>
+          </select>
+        </label>
+
+        <label>⑥ 小圆列数
+          <select id="colParity">
+            <option value="odd">单数列</option>
+            <option value="even">双数列</option>
+          </select>
+        </label>
+      </div>
+
+      <p class="note">
+        小圆横竖均匀排列，最外圈保留，全部为空心。
+        间距留空时不画小圆；直径留空时使用默认尺寸。
+      </p>
+    </section>
+
+    <section class="card">
+      <h2>绘图预览</h2>
+
+      <div id="preview" class="preview">
+        <div class="empty">请输入长方形的宽度和长度</div>
+      </div>
+
+      <button id="exportSvg" class="export" type="button" disabled>
+        导出 SVG 文件
+      </button>
+
+      <p id="status" class="status"></p>
+      <p id="dimensions" class="dimensions" hidden></p>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      "use strict";
+
+      const NS = "http://www.w3.org/2000/svg";
+      const ids = [
+        "width", "length", "spacing", "diameter",
+        "rowParity", "colParity"
+      ];
+
+      const input = Object.fromEntries(
+        ids.map(id => [id, document.getElementById(id)])
+      );
+
+      const preview = document.getElementById("preview");
+      const status = document.getElementById("status");
+      const dimensions = document.getElementById("dimensions");
+      const exportButton = document.getElementById("exportSvg");
+
+      function valueOf(id) {
+        const raw = input[id].value.trim();
+        return raw === "" ? 0 : Number(raw);
+      }
+
+      function element(tag, attributes) {
+        const node = document.createElementNS(NS, tag);
+        for (const [key, value] of Object.entries(attributes)) {
+          node.setAttribute(key, value);
+        }
+        return node;
+      }
+
+      function chooseCount(maximum, parity) {
+        for (let n = maximum; n >= 1; n--) {
+          if (n % 2 === (parity === "odd" ? 1 : 0)) {
+            return n;
+          }
+        }
+        return 0;
+      }
+
+      function showError(message) {
+        preview.innerHTML = '<div class="empty">请检查输入</div>';
+        status.textContent = message;
+        status.className = "status error";
+      }
+
+      function draw() {
+        const w = valueOf("width");
+        const h = valueOf("length");
+        const spacing = valueOf("spacing");
+        const enteredDiameter = valueOf("diameter");
+
+        preview.replaceChildren();
+        exportButton.disabled = true;
+        dimensions.hidden = true;
+        status.className = "status";
+
+        if (!input.width.value.trim() || !input.length.value.trim()) {
+          preview.innerHTML =
+            '<div class="empty">请输入长方形的宽度和长度</div>';
+          status.textContent = "";
+          return;
+        }
+
+        if (![w, h, spacing, enteredDiameter].every(Number.isFinite)
+            || w <= 0 || h <= 0
+            || spacing < 0 || enteredDiameter < 0) {
+          showError("长方形长宽须大于 0；间距和直径不能为负数。");
+          return;
+        }
+
+        const diameter = input.diameter.value.trim()
+          ? enteredDiameter
+          : Math.min(w, h) * 0.04;
+
+        if (spacing > 0 && diameter <= 0) {
+          showError("小圆直径需要大于 0。");
+          return;
+        }
+
+        if (spacing > 0 && spacing < diameter) {
+          showError("小圆中心间距不能小于小圆直径。");
+          return;
+        }
+
+        let rows = 0;
+        let cols = 0;
+
+        if (spacing > 0) {
+          if (diameter > w || diameter > h) {
+            showError("小圆直径超过长方形尺寸。");
+            return;
+          }
+
+          const maxCols =
+            Math.floor((w - diameter) / spacing + 1e-9) + 1;
+          const maxRows =
+            Math.floor((h - diameter) / spacing + 1e-9) + 1;
+
+          cols = chooseCount(maxCols, input.colParity.value);
+          rows = chooseCount(maxRows, input.rowParity.value);
+
+          if (cols < 1 || rows < 1) {
+            showError("当前尺寸排不下所选单双数的小圆。");
+            return;
+          }
+
+          if (cols * rows > 3000) {
+            showError("小圆超过 3000 个，请增大间距。");
+            return;
+          }
+        }
+
+        const padX = w * 0.18;
+        const padY = h * 0.18;
+
+        const svg = element("svg", {
+          viewBox:
+            `${-padX} ${-padY} ${w + padX * 2} ${h + padY * 2}`,
+          preserveAspectRatio: "xMidYMid meet"
+        });
+
+        svg.appendChild(element("rect", {
+          x: 0,
+          y: 0,
+          width: w,
+          height: h,
+          fill: "white",
+          stroke: "black",
+          "stroke-width": Math.max(Math.min(w, h) * 0.008, 0.12)
+        }));
+
+        if (rows && cols) {
+          const firstX = (w - (cols - 1) * spacing) / 2;
+          const firstY = (h - (rows - 1) * spacing) / 2;
+          const radius = diameter / 2;
+
+          for (let row = 0; row < rows; row++) {
+            for (let col = 0; col < cols; col++) {
+              svg.appendChild(element("circle", {
+                cx: firstX + col * spacing,
+                cy: firstY + row * spacing,
+                r: radius,
+                fill: "none",
+                stroke: "black",
+                "stroke-opacity": 0.3,
+                "stroke-width": Math.max(
+                  radius * 0.2,
+                  Math.min(w, h) * 0.002
+                )
+              }));
+            }
+          }
+        }
+
+        const red = "#e53935";
+        const lineWidth = Math.max(Math.min(w, h) * 0.005, 0.08);
+        const arrow = Math.min(w, h) * 0.025;
+        const topY = -h * 0.075;
+        const leftX = -w * 0.075;
+        const fontSize = Math.min(w, h) * 0.045;
+
+        function line(x1, y1, x2, y2) {
+          svg.appendChild(element("line", {
+            x1, y1, x2, y2,
+            stroke: red,
+            "stroke-width": lineWidth
+          }));
+        }
+
+        function triangle(points) {
+          svg.appendChild(element("polygon", {
+            points,
+            fill: red
+          }));
+        }
+
+        function label(text, x, y, rotate) {
+          const node = element("text", {
+            x,
+            y,
+            "text-anchor": "middle",
+            "font-size": fontSize,
+            "font-family": "sans-serif",
+            fill: red
+          });
+
+          if (rotate) {
+            node.setAttribute("transform", `rotate(-90 ${x} ${y})`);
+          }
+
+          node.textContent = text;
+          svg.appendChild(node);
+        }
+
+        // 宽度：长方形上边外侧。
+        line(0, topY, w, topY);
+        line(0, -h * 0.015, 0, -h * 0.095);
+        line(w, -h * 0.015, w, -h * 0.095);
+
+        triangle(
+          `0,${topY} ` +
+          `${arrow},${topY - arrow * 0.36} ` +
+          `${arrow},${topY + arrow * 0.36}`
+        );
+
+        triangle(
+          `${w},${topY} ` +
+          `${w - arrow},${topY - arrow * 0.36} ` +
+          `${w - arrow},${topY + arrow * 0.36}`
+        );
+
+        label(`宽 ${w} 厘米`, w / 2, -h * 0.105, false);
+
+        // 长度：长方形左边外侧。
+        line(leftX, 0, leftX, h);
+        line(-w * 0.015, 0, -w * 0.095, 0);
+        line(-w * 0.015, h, -w * 0.095, h);
+
+        triangle(
+          `${leftX},0 ` +
+          `${leftX - arrow * 0.36},${arrow} ` +
+          `${leftX + arrow * 0.36},${arrow}`
+        );
+
+        triangle(
+          `${leftX},${h} ` +
+          `${leftX - arrow * 0.36},${h - arrow} ` +
+          `${leftX + arrow * 0.36},${h - arrow}`
+        );
+
+        label(`长 ${h} 厘米`, -w * 0.11, h / 2, true);
+
+        preview.appendChild(svg);
+        exportButton.disabled = false;
+
+        status.textContent = spacing > 0
+          ? `空心小圆 ${rows * cols} 个，${rows} 行 × ${cols} 列。`
+          : "未填写间距，目前不画小圆。";
+
+        dimensions.textContent =
+          `长方形：长 ${h} 厘米，宽 ${w} 厘米；` +
+          `小圆直径：${diameter} 厘米。`;
+
+        dimensions.hidden = false;
+      }
+
+      ids.forEach(id => {
+        input[id].addEventListener(
+          id.endsWith("Parity") ? "change" : "input",
+          draw
+        );
+      });
+
+      exportButton.addEventListener("click", () => {
+        const drawing = preview.querySelector("svg");
+        if (!drawing) return;
+
+        const w = valueOf("width");
+        const h = valueOf("length");
+        const fileSvg = drawing.cloneNode(true);
+
+        fileSvg.setAttribute("xmlns", NS);
+        fileSvg.setAttribute("width", `${w * 1.36}cm`);
+        fileSvg.setAttribute("height", `${h * 1.36}cm`);
+
+        const source =
+          '<?xml version="1.0" encoding="UTF-8"?>\n' +
+          new XMLSerializer().serializeToString(fileSvg);
+
+        const name = `圆孔图_${w}x${h}厘米.svg`;
+
+        if (window.AndroidExport &&
+            typeof window.AndroidExport.saveSvg === "function") {
+          window.AndroidExport.saveSvg(name, source);
+          return;
+        }
+
+        const url = URL.createObjectURL(
+          new Blob([source], {
+            type: "image/svg+xml;charset=utf-8"
+          })
+        );
+
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = name;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+      });
+
+      draw();
+    })();
+  </script>
+</body>
+</html>
